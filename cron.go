@@ -5,11 +5,19 @@ import (
 	"runtime"
 	"sort"
 	"time"
+	"errors"
+	"fmt"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
+
+const (
+	DEFAULT_MAXRUN = 10 //the default value for job goroutine
+	IS_WAITE = false //handle if job goroutine out of MAXRUN  wait or destroy
+)
+
 type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
@@ -34,6 +42,7 @@ type Schedule interface {
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
+	Name string
 	// The schedule on which this job should be run.
 	Schedule Schedule
 
@@ -47,6 +56,8 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	MaxRun int
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -92,23 +103,25 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(name,spec string,maxRun int, cmd func()) error {
+	return c.AddJob(name,spec,maxRun, FuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(name,spec string,maxRun int, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd)
+	c.Schedule(name,maxRun,schedule, cmd)
 	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(name string,maxRun int,schedule Schedule, cmd Job) {
 	entry := &Entry{
+		Name:name,
+		MaxRun:maxRun,
 		Schedule: schedule,
 		Job:      cmd,
 	}
@@ -165,6 +178,41 @@ func (c *Cron) runWithRecovery(j Job) {
 	j.Run()
 }
 
+//remove job by name
+//rebuild c.entries expect the entry which name is not expect
+func (c *Cron) Remove(name string)error {
+	if c.running {
+		return errors.New("c is running")
+	}
+	for k, entry := range c.entries {
+		if entry.Name == name{
+			//reConstruct the entries
+			c.entries = append(c.entries[:k], c.entries[k+1:]...)
+		}
+	}
+	return nil
+}
+
+//update job spec
+//return error if c is running or job is no exists
+func (c *Cron) UpdateSchedule(name string,spec string)error {
+	if c.running {
+		return errors.New("c is running")
+	}
+
+	return errors.New(fmt.Sprintf("c did not contain job:%s",name))
+
+	for k, entry := range c.entries {
+		if entry.Name == name{
+			//reConstruct the entries
+			c.entries = append(c.entries[:k], c.entries[k+1:]...)
+		}
+	}
+	return nil
+}
+
+
+
 // Run the scheduler. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
@@ -196,6 +244,7 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
+					//add goroutine pool
 					go c.runWithRecovery(e.Job)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
@@ -244,6 +293,8 @@ func (c *Cron) entrySnapshot() []*Entry {
 	entries := []*Entry{}
 	for _, e := range c.entries {
 		entries = append(entries, &Entry{
+			Name:	  e.Name,
+			MaxRun:   e.MaxRun,
 			Schedule: e.Schedule,
 			Next:     e.Next,
 			Prev:     e.Prev,
@@ -252,6 +303,18 @@ func (c *Cron) entrySnapshot() []*Entry {
 	}
 	return entries
 }
+
+
+// nameSnapshot returns a copy of the current cron name list.
+//just running
+func (c *Cron) nameSnapshot() []string {
+	names := []string{}
+	for _, e := range c.entries {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
 
 // now returns current time in c location
 func (c *Cron) now() time.Time {
