@@ -56,8 +56,6 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
-
-	MaxRun int
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -103,25 +101,24 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(name,spec string,maxRun int, cmd func()) error {
-	return c.AddJob(name,spec,maxRun, FuncJob(cmd))
+func (c *Cron) AddFunc(name,spec string,cmd func()) error {
+	return c.AddJob(name,spec, FuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(name,spec string,maxRun int, cmd Job) error {
+func (c *Cron) AddJob(name,spec string, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(name,maxRun,schedule, cmd)
+	c.Schedule(name,schedule, cmd)
 	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(name string,maxRun int,schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(name string,schedule Schedule, cmd Job) {
 	entry := &Entry{
 		Name:name,
-		MaxRun:maxRun,
 		Schedule: schedule,
 		Job:      cmd,
 	}
@@ -244,7 +241,6 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					//add goroutine pool
 					go c.runWithRecovery(e.Job)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
@@ -294,7 +290,6 @@ func (c *Cron) entrySnapshot() []*Entry {
 	for _, e := range c.entries {
 		entries = append(entries, &Entry{
 			Name:	  e.Name,
-			MaxRun:   e.MaxRun,
 			Schedule: e.Schedule,
 			Next:     e.Next,
 			Prev:     e.Prev,
