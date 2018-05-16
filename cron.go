@@ -190,6 +190,18 @@ func (c *Cron) Remove(name string)error {
 	return nil
 }
 
+//remove all jobs
+func (c *Cron) RemoveAll()error{
+	if c.running {
+		return errors.New("c is running")
+	}
+	c.entries = nil
+	c.snapshot = make(chan []*Entry)
+	c.location = time.Now().Location()
+	return nil
+
+}
+
 //update job spec
 //return error if c is running or job is no exists
 func (c *Cron) UpdateSchedule(name string,spec string)error {

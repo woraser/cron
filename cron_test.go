@@ -21,6 +21,40 @@ func BenchmarkFormat(b *testing.B){
 }
 
 
+/*go test -v -test.run TestRemoveAll*/
+func TestRemoveAll(t *testing.T){
+	cron := New()
+	cron.AddFunc("test1","* * * * * *",func() {
+		fmt.Println("test1 run")
+	})
+	cron.AddFunc("test2","* * * * * *",func() {
+		fmt.Println("test2 run")
+	})
+	fmt.Println("step0:",cron.nameSnapshot())
+	cron.Start()
+	time.Sleep(3*time.Second)
+	fmt.Println("step1",cron.nameSnapshot())
+	cron.Stop()
+	cron.RemoveAll()
+	fmt.Println("step2",cron.nameSnapshot())
+	cron.Start()
+	fmt.Println("step3",cron.nameSnapshot())
+	cron.Stop()
+	cron.AddFunc("test3","* * * * * *",func() {
+		fmt.Println("test3 run")
+	})
+	cron.Start()
+	fmt.Println("step4",cron.nameSnapshot())
+
+
+	select {
+	case <-time.After(100*time.Second + 10*time.Millisecond):
+		return
+	}
+
+}
+
+
 func TestFuncPanicRecovery(t *testing.T) {
 	cron := New()
 	defer cron.Stop()
